@@ -126,7 +126,7 @@
         <div class="subtitle">Founder • Crajy Boys</div>
       </div>
 <div class="member-card">
-    <img src="C:\Users\sy4460\Pictures\Screenshots\Screenshot 2025-12-10 215723.png" class="President Photo">
+    <img src="Nitish.png" class="President Photo">
     <h3>NK gameing</h3>
     <h3>President of this web site</h3>
 </div>
@@ -181,11 +181,18 @@
           </div>
         </div>
 
-        <div class="form-row" id="uploadWrap" style="display:none;">
-          <label>Upload screenshot of subscription page</label>
-          <input id="subScreenshot" type="file" accept="image/*">
-          <div class="small">If uploaded correctly, you'll proceed to payment step.</div>
-        </div>
+      <div class="form-row" id="uploadWrap">
+  <label>Upload screenshot of subscription page</label>
+  <input id="subScreenshot" type="file" accept="image/*">
+  <div class="small" id="uploadMessage">
+    If uploaded correctly, you'll proceed to the next step.
+  </div>
+</div>
+
+<button id="nextStep" style="display:none;">Proceed to Payment</button>
+
+<!-- Reference image (hidden) -->
+<img id="referenceImage" src="reference.png" style="display:none;">
 
         <div class="buttons">
           <button id="backTo1" class="btn-ghost">Previous</button>
@@ -200,7 +207,7 @@
           <p class="small">UPI: <strong>7307242602@upi</strong> (or the UPI/number you prefer)</p>
         </div>
         <div class="form-row">
-          <label>Enter the UPI transaction reference / ID (simulate)</label>
+          <label>Enter the UPI transaction reference / ID (simulate) Unique which you get after any transaction</label>
           <input id="upiRef" placeholder="TXN12345">
         </div>
 
@@ -370,6 +377,7 @@
   </script>
 </body>
 </html>
+
 
 
 
