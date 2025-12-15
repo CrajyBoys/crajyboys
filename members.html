@@ -162,7 +162,6 @@
       font-weight:800;
     }
 
-    /* month list (4 columns) and year list (3 columns) */
     .months-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
     .years-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; max-height:220px; overflow:auto; padding-right:4px; }
   </style>
@@ -198,7 +197,6 @@
     <div class="members-grid" id="membersGrid"></div>
   </main>
 
-  <!-- modal multi-step form -->
   <div class="modal-bg" id="modalBg">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -206,68 +204,59 @@
         <button id="closeModal" class="btn-ghost">Close</button>
       </div>
 
-      <!-- step 1: name + DOB picker -->
+      <!-- STEP 1: Name + DOB -->
       <div class="form-step active" id="step1">
         <div class="form-row">
           <label for="q_name">What is your name?</label>
           <input id="q_name" type="text" placeholder="Your name" autocomplete="name">
         </div>
-
         <div class="form-row" style="z-index:130;">
           <label for="q_dob_display">Date of Birth (click to pick)</label>
           <input id="q_dob_display" type="text" placeholder="Select DOB" readonly aria-readonly="true" />
           <input id="q_dob_store" type="hidden" />
           <div class="picker" id="dobPicker" aria-hidden="true">
             <div class="picker-header">
-              <div>
-                <button class="back" id="pickerBack" type="button" title="Back">&larr;</button>
-              </div>
+              <div><button class="back" id="pickerBack" type="button">&larr;</button></div>
               <div class="picker-title" id="pickerTitle">Select Day</div>
               <div style="width:40px"></div>
             </div>
-            <div id="dayView" class="picker-grid" aria-hidden="false"></div>
-            <div id="monthView" class="months-grid" style="display:none;" aria-hidden="true"></div>
-            <div id="yearView" class="years-grid" style="display:none;" aria-hidden="true"></div>
+            <div id="dayView" class="picker-grid"></div>
+            <div id="monthView" class="months-grid" style="display:none;"></div>
+            <div id="yearView" class="years-grid" style="display:none;"></div>
             <div id="pickerMessage" class="small" style="margin-top:8px;"></div>
           </div>
         </div>
-
         <div class="buttons">
           <div></div>
           <button id="toStep2" class="btn-primary">Next</button>
         </div>
       </div>
 
-      <!-- step 2: email + OTP -->
+      <!-- STEP 2: Email + OTP -->
       <div class="form-step" id="step2">
         <div class="form-row">
           <label for="q_email">Email address</label>
           <input id="q_email" type="email" placeholder="you@example.com" autocomplete="email">
         </div>
-
-        <div class="form-row" style="display:none;">
+        <div class="form-row">
           <label for="q_otp">Enter OTP</label>
           <input id="q_otp" type="text" placeholder="6-digit OTP" maxlength="6" style="display:none;">
         </div>
-
         <div id="otpTimer" class="small" style="margin-top:6px;"></div>
-        <div id="emailVerificationArea" class="small" style="margin-top:8px;"></div>
         <div id="step2Msg" class="small error"></div>
-
         <div class="buttons">
           <button id="backTo1" class="btn-ghost">Previous</button>
           <button id="toStep3" class="btn-primary">Next</button>
         </div>
       </div>
 
-      <!-- step 3: password -->
+      <!-- STEP 3: Password -->
       <div class="form-step" id="step3">
         <div class="form-row">
           <label for="q_password">Create a password</label>
           <input id="q_password" type="password" placeholder="Password (min 12 chars)">
-          <div class="small">Password must be at least 12 characters and include an uppercase letter, a number, and a special symbol.</div>
+          <div class="small">Password must be at least 12 characters and include uppercase, number, and special character.</div>
         </div>
-
         <div class="buttons">
           <button id="backTo2" class="btn-ghost">Previous</button>
           <button id="finishBtn" class="btn-primary">Finish & Join</button>
@@ -279,7 +268,6 @@
 
   <script>
     const API_BASE = 'https://crajy-boys.onrender.com';
-
     const openBtn = document.getElementById('openJoin');
     const modalBg = document.getElementById('modalBg');
     const closeBtn = document.getElementById('closeModal');
@@ -290,221 +278,61 @@
     const q_password = document.getElementById('q_password');
     const q_otp = document.getElementById('q_otp');
     const step2Msg = document.getElementById('step2Msg');
+    const otpTimerDiv = document.getElementById('otpTimer');
 
-    let otpSent = false;
-    let otpVerified = false;
-    let otpExpired = false;
-    let otpTimerInterval;
+    let otpSent=false, otpVerified=false, otpExpired=false, otpTimerInterval;
 
-    openBtn.addEventListener('click', ()=> modalBg.style.display='flex');
-    closeBtn.addEventListener('click', ()=> {
-      modalBg.style.display='none';
-      resetForm();
-    });
+    openBtn.onclick=()=>modalBg.style.display='flex';
+    closeBtn.onclick=()=>{ modalBg.style.display='none'; resetForm(); };
 
     function showStep(n){
-      document.querySelectorAll('.form-step').forEach(el=>{
-        el.classList.toggle('active', el.id === 'step'+n);
-      });
+      document.querySelectorAll('.form-step').forEach(el=>el.classList.toggle('active', el.id==='step'+n));
       document.getElementById('formMessage').textContent='';
     }
 
-    // STEP 1 navigation
-    document.getElementById('toStep2').addEventListener('click', ()=>{
-      const name = q_name.value.trim();
-      const dob = q_dob_store.value.trim();
-      if(!name || !dob){
-        document.getElementById('formMessage').textContent='Please enter name and DOB.';
-        return;
-      }
-      showStep(2);
-    });
-    document.getElementById('backTo1').addEventListener('click', ()=> showStep(1));
-
-    // --- STEP 2: OTP ---
-    async function sendOtp(){
-      step2Msg.textContent='Sending OTP...';
-      try{
-        const res = await fetch(`${API_BASE}/send-otp`,{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ name:q_name.value, email:q_email.value, dob:q_dob_store.value })
-        });
-        if(!res.ok) throw new Error('Failed to send OTP');
-        q_otp.style.display='block';
-        otpSent = true;
-        otpExpired = false;
-        startOtpCountdown(120);
-        step2Msg.innerHTML='<span class="success">OTP sent. Check your email.</span>';
-
-        if(!document.getElementById('resendOtpBtn')){
-          const btn = document.createElement('button');
-          btn.id='resendOtpBtn';
-          btn.className='btn-ghost';
-          btn.textContent='Resend OTP';
-          btn.style.marginTop='6px';
-          q_otp.parentNode.appendChild(btn);
-          btn.onclick = ()=> { otpSent=false; sendOtp(); };
-        }
-      } catch(e){
-        step2Msg.textContent='Error sending OTP.';
-        console.error(e);
-      }
-    }
-
-    document.getElementById('toStep3').addEventListener('click', async ()=>{
-      if(!otpSent || otpExpired){
-        sendOtp();
-        return;
-      }
-      const otpVal = q_otp.value.trim();
-      if(!/^\d{6}$/.test(otpVal)){
-        step2Msg.textContent='Enter 6-digit OTP.';
-        return;
-      }
-      step2Msg.textContent='Verifying OTP...';
-      try{
-        const res = await fetch(`${API_BASE}/verify-otp`,{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ email:q_email.value, otp:otpVal })
-        });
-        if(!res.ok) throw new Error('OTP invalid');
-        otpVerified = true;
-        step2Msg.innerHTML='<span class="success">Email verified!</span>';
-        setTimeout(()=> showStep(3),700);
-      } catch(e){
-        step2Msg.textContent='Invalid OTP. Try again.';
-        console.error(e);
-      }
-    });
-
-    document.getElementById('backTo2').addEventListener('click', ()=> showStep(2));
-
-    function startOtpCountdown(seconds){
-      clearInterval(otpTimerInterval);
-      const timerDiv = document.getElementById('otpTimer');
-      let remaining = seconds;
-      timerDiv.textContent = `OTP expires in ${remaining}s`;
-      otpTimerInterval = setInterval(()=>{
-        remaining--;
-        timerDiv.textContent = `OTP expires in ${remaining}s`;
-        if(remaining<=0){
-          clearInterval(otpTimerInterval);
-          timerDiv.textContent='OTP expired. Resend OTP.';
-          otpExpired=true;
-          otpSent=false;
-        }
-      },1000);
-    }
-
-    // STEP 3 finish
-    document.getElementById('finishBtn').addEventListener('click', async ()=>{
-      const pwd = q_password.value.trim();
-      const name = q_name.value.trim();
-      const email = q_email.value.trim();
-      if(pwd.length<12 || !/[A-Z]/.test(pwd) || !/\d/.test(pwd) || !/[!@#$%^&*(),.?":{}|<>_\-\\\/\[\];'`~+=]/.test(pwd)){
-        document.getElementById('formMessage').textContent='Password must meet all criteria.';
-        return;
-      }
-      document.getElementById('formMessage').textContent='Completing registration...';
-      try{
-        const res = await fetch(`${API_BASE}/complete-registration`,{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ email, password:pwd })
-        });
-        const data = await res.json();
-        if(data.ok){
-          document.getElementById('formMessage').innerHTML=`<div class="success">Welcome ${name}, registration complete!</div>`;
-          setTimeout(()=>{ loadMembersFromServer(); modalBg.style.display='none'; resetForm(); },900);
-        } else {
-          document.getElementById('formMessage').textContent=data.error||'Failed.';
-        }
-      } catch(e){
-        document.getElementById('formMessage').textContent='Error completing registration.';
-        console.error(e);
-      }
-    });
-
-    // --- Members list ---
-    async function fetchMembers(){
-      try{
-        const res = await fetch(`${API_BASE}/members`);
-        if(!res.ok) throw new Error('Failed');
-        const data = await res.json();
-        return data.members || [];
-      } catch(e){ console.error(e); return []; }
-    }
-
-    async function loadMembersFromServer(){
-      const grid = document.getElementById('membersGrid');
-      grid.innerHTML='';
-      const members = await fetchMembers();
-      if(!members.length){
-        grid.innerHTML=`<div class="member-card"><div style="margin-top:4px;font-weight:800;">Example Member</div><div style="font-size:12px;opacity:0.85;">example@example.com</div></div>`;
-        return;
-      }
-      members.forEach(m=>{
-        const card = document.createElement('div');
-        card.className='member-card';
-        card.innerHTML=`<div style="margin-top:4px;font-weight:800;">${escapeHtml(m.name)}</div><div style="font-size:12px;opacity:0.85;">${escapeHtml(m.email)}</div>`;
-        grid.appendChild(card);
-      });
-    }
-
-    function resetForm(){
-      q_name.value=''; q_dob_store.value=''; q_dob_display.value='';
-      q_email.value=''; q_password.value=''; q_otp.value=''; q_otp.style.display='none';
-      otpSent=otpVerified=otpExpired=false;
-      clearInterval(otpTimerInterval);
-      step2Msg.textContent=''; document.getElementById('otpTimer').textContent='';
-      showStep(1);
-    }
-
-    function escapeHtml(str){ return String(str||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-
-    // --- DOB picker ---
-    const dobPicker = document.getElementById('dobPicker');
-    const pickerTitle = document.getElementById('pickerTitle');
-    const pickerBack = document.getElementById('pickerBack');
-    const dayView = document.getElementById('dayView');
-    const monthView = document.getElementById('monthView');
-    const yearView = document.getElementById('yearView');
-    const pickerMessage = document.getElementById('pickerMessage');
-    const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-    const today = new Date();
-    let pickStep = 1, selDay=null, selMonth=null, selYear=null;
+    // DOB Picker
+    const dobPicker=document.getElementById('dobPicker');
+    const pickerTitle=document.getElementById('pickerTitle');
+    const pickerBack=document.getElementById('pickerBack');
+    const dayView=document.getElementById('dayView');
+    const monthView=document.getElementById('monthView');
+    const yearView=document.getElementById('yearView');
+    const monthNames=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    let pickStep=1, selDay=null, selMonth=null, selYear=null;
 
     function renderDays(){
       dayView.innerHTML=''; pickerTitle.textContent='Select Day';
       for(let d=1;d<=31;d++){
-        const btn=document.createElement('div'); btn.className='picker-item'; btn.textContent=d;
-        if(selDay===d) btn.classList.add('selected');
-        btn.addEventListener('click',()=>{ selDay=d; renderMonths(); });
-        dayView.appendChild(btn);
+        const div=document.createElement('div'); div.className='picker-item'; div.textContent=d;
+        if(selDay===d) div.classList.add('selected');
+        div.onclick=()=>{ selDay=d; renderMonths(); };
+        dayView.appendChild(div);
       }
-      dayView.style.display='grid'; monthView.style.display='none'; yearView.style.display='none'; pickStep=1; pickerMessage.textContent='';
+      dayView.style.display='grid'; monthView.style.display='none'; yearView.style.display='none';
+      pickStep=1;
     }
     function renderMonths(){
       monthView.innerHTML=''; pickerTitle.textContent='Select Month';
       monthNames.forEach((m,i)=>{
-        const btn=document.createElement('div'); btn.className='picker-item'; btn.textContent=m;
-        if(selMonth===i+1) btn.classList.add('selected');
-        btn.addEventListener('click',()=>{ selMonth=i+1; renderYears(); });
-        monthView.appendChild(btn);
+        const div=document.createElement('div'); div.className='picker-item'; div.textContent=m;
+        if(selMonth===i+1) div.classList.add('selected');
+        div.onclick=()=>{ selMonth=i+1; renderYears(); };
+        monthView.appendChild(div);
       });
-      dayView.style.display='none'; monthView.style.display='grid'; yearView.style.display='none'; pickStep=2;
+      dayView.style.display='none'; monthView.style.display='grid'; yearView.style.display='none';
+      pickStep=2;
     }
     function renderYears(){
       yearView.innerHTML=''; pickerTitle.textContent='Select Year';
-      for(let y=today.getFullYear();y>=1900;y--){
-        const btn=document.createElement('div'); btn.className='picker-item'; btn.textContent=y;
-        if(selYear===y) btn.classList.add('selected');
-        btn.addEventListener('click',()=>{ selYear=y; finalizeDob(); });
-        yearView.appendChild(btn);
+      const currentYear=new Date().getFullYear();
+      for(let y=currentYear-1;y>=1900;y--){
+        const div=document.createElement('div'); div.className='picker-item'; div.textContent=y;
+        if(selYear===y) div.classList.add('selected');
+        div.onclick=()=>{ selYear=y; finalizeDob(); };
+        yearView.appendChild(div);
       }
-      dayView.style.display='none'; monthView.style.display='none'; yearView.style.display='grid'; pickStep=3;
+      dayView.style.display='none'; monthView.style.display='none'; yearView.style.display='grid';
+      pickStep=3;
     }
     function finalizeDob(){
       if(selDay&&selMonth&&selYear){
@@ -513,14 +341,99 @@
         dobPicker.classList.remove('open');
       }
     }
-    dobDisplay.addEventListener('click',()=>{ dobPicker.classList.add('open'); renderDays(); });
-    pickerBack.addEventListener('click',()=>{
-      if(pickStep===2) renderDays();
-      else if(pickStep===3) renderMonths();
-      else dobPicker.classList.remove('open');
-    });
+    q_dob_display.onclick=()=>{ dobPicker.classList.add('open'); renderDays(); };
+    pickerBack.onclick=()=>{ if(pickStep===2) renderDays(); else if(pickStep===3) renderMonths(); else dobPicker.classList.remove('open'); };
 
-    window.addEventListener('load', ()=> loadMembersFromServer());
+    // STEP navigation
+    document.getElementById('toStep2').onclick=()=>{ if(q_name.value && q_dob_store.value) showStep(2); else document.getElementById('formMessage').textContent='Enter name & DOB'; };
+    document.getElementById('backTo1').onclick=()=>showStep(1);
+    document.getElementById('backTo2').onclick=()=>showStep(2);
+
+    // OTP logic
+    async function sendOtp(){
+      step2Msg.textContent='Sending OTP...';
+      try{
+        const res=await fetch(`${API_BASE}/send-otp`,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name:q_name.value, email:q_email.value, dob:q_dob_store.value }) });
+        if(!res.ok) throw new Error('Failed');
+        q_otp.style.display='block';
+        otpSent=true; otpExpired=false;
+        startOtpCountdown(120);
+        step2Msg.innerHTML='<span class="success">OTP sent</span>';
+      } catch(e){ step2Msg.textContent='Error sending OTP'; console.error(e); }
+    }
+
+    function startOtpCountdown(sec){
+      clearInterval(otpTimerInterval);
+      let remaining=sec;
+      otpTimerDiv.textContent=`OTP expires in ${remaining}s`;
+      otpTimerInterval=setInterval(()=>{
+        remaining--; otpTimerDiv.textContent=`OTP expires in ${remaining}s`;
+        if(remaining<=0){ clearInterval(otpTimerInterval); otpExpired=true; otpSent=false; otpTimerDiv.textContent='OTP expired. Click Next to resend.'; }
+      },1000);
+    }
+
+    document.getElementById('toStep3').onclick=async ()=>{
+      if(!otpSent || otpExpired){ sendOtp(); return; }
+      if(!/^\d{6}$/.test(q_otp.value)){ step2Msg.textContent='Enter 6-digit OTP'; return; }
+      step2Msg.textContent='Verifying OTP...';
+      try{
+        const res=await fetch(`${API_BASE}/verify-otp`,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ email:q_email.value, otp:q_otp.value }) });
+        const data=await res.json();
+        if(res.ok && data.ok){ otpVerified=true; showStep(3); } else { step2Msg.textContent='Incorrect OTP'; }
+      } catch(e){ step2Msg.textContent='Error verifying OTP'; console.error(e); }
+    };
+
+    // Finish
+    document.getElementById('finishBtn').onclick=async ()=>{
+      const pwd=q_password.value;
+      const hasUpper=/[A-Z]/.test(pwd);
+      const hasNum=/\d/.test(pwd);
+      const hasSpecial=/[!@#$%^&*(),.?":{}|<>_\-\\\/\[\];'`~+=]/.test(pwd);
+      if(pwd.length<12 || !hasUpper || !hasNum || !hasSpecial){ document.getElementById('formMessage').textContent='Invalid password'; return; }
+
+      document.getElementById('formMessage').textContent='Completing registration...';
+      try{
+        const res=await fetch(`${API_BASE}/complete-registration`,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ email:q_email.value, password:pwd }) });
+        const data=await res.json();
+        if(data.ok){
+          document.getElementById('formMessage').innerHTML=`<div class="success">Welcome <strong>${q_name.value}</strong>!</div>`;
+          addMemberToGrid({ name:q_name.value, email:q_email.value });
+          setTimeout(()=>{ modalBg.style.display='none'; resetForm(); },900);
+        } else document.getElementById('formMessage').textContent=data.error || 'Failed';
+      } catch(e){ document.getElementById('formMessage').textContent='Error'; console.error(e); }
+    };
+
+    function addMemberToGrid(m){
+      const grid=document.getElementById('membersGrid');
+      const card=document.createElement('div'); card.className='member-card';
+      card.innerHTML=`<div style="margin-top:4px;font-weight:800;">${m.name}</div><div style="font-size:12px;opacity:0.85;">${m.email}</div>`;
+      grid.appendChild(card);
+    }
+
+    function resetForm(){
+      q_name.value=''; q_dob_store.value=''; q_dob_display.value='';
+      q_email.value=''; q_password.value=''; q_otp.value=''; q_otp.style.display='none';
+      otpSent=otpVerified=otpExpired=false;
+      clearInterval(otpTimerInterval);
+      step2Msg.textContent=''; otpTimerDiv.textContent='';
+      selDay=selMonth=selYear=null;
+      showStep(1);
+    }
+
+    async function loadMembersFromServer(){
+      const grid=document.getElementById('membersGrid'); grid.innerHTML='';
+      try{
+        const res=await fetch(`${API_BASE}/members`);
+        const data=await res.json();
+        if(!data.members || !data.members.length){
+          grid.innerHTML=`<div class="member-card"><div style="margin-top:4px;font-weight:800;">Example Member</div><div style="font-size:12px;opacity:0.85;">example@example.com</div></div>`;
+          return;
+        }
+        data.members.forEach(addMemberToGrid);
+      } catch(e){ console.error(e); }
+    }
+
+    window.onload=()=>loadMembersFromServer();
   </script>
 </body>
 </html>
