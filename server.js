@@ -1,9 +1,11 @@
 require('dotenv').config();
+
 const express = require('express');
 const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcryptjs'); // ✅ FIXED
 const nodemailer = require('nodemailer');
 const cors = require('cors');
+
 const { init, run, get, all } = require('./db');
 
 // --------------------
@@ -13,19 +15,21 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Initialize DB
+// --------------------
+// Init database
+// --------------------
 init();
 
 // --------------------
 // Config
 // --------------------
 const PORT = process.env.PORT || 4000;
-const BASE_URL = 'https://crajy-boys.onrender.com';
+const BASE_URL = process.env.BASE_URL || 'https://crajy-boys.onrender.com';
 
 // --------------------
 // Health check (Render)
 // --------------------
-app.get('/healthz', (req, res) => {
+app.get('/healthz', (_req, res) => {
   res.status(200).send('ok');
 });
 
@@ -43,20 +47,21 @@ async function createTransporter() {
         pass: process.env.SMTP_PASS
       }
     });
-  } else {
-    const testAccount = await nodemailer.createTestAccount();
-    console.warn('SMTP not configured — using Ethereal test account');
-
-    return nodemailer.createTransport({
-      host: testAccount.smtp.host,
-      port: testAccount.smtp.port,
-      secure: testAccount.smtp.secure,
-      auth: {
-        user: testAccount.user,
-        pass: testAccount.pass
-      }
-    });
   }
+
+  // Fallback: Ethereal (dev only)
+  const testAccount = await nodemailer.createTestAccount();
+  console.warn('⚠️ SMTP not configured — using Ethereal test account');
+
+  return nodemailer.createTransport({
+    host: testAccount.smtp.host,
+    port: testAccount.smtp.port,
+    secure: testAccount.smtp.secure,
+    auth: {
+      user: testAccount.user,
+      pass: testAccount.pass
+    }
+  });
 }
 
 const transporterPromise = createTransporter();
@@ -64,7 +69,7 @@ const transporterPromise = createTransporter();
 // --------------------
 // Helpers
 // --------------------
-function genTokenAndHash() {
+function generateToken() {
   const token = crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   return { token, tokenHash };
@@ -74,49 +79,62 @@ function genTokenAndHash() {
 // Routes
 // --------------------
 
-// Register init
+// Register (step 1)
 app.post('/register-init', async (req, res) => {
   try {
     const { name, email, dob } = req.body;
     if (!name || !email) {
-      return res.status(400).json({ error: 'name and email required' });
+      return res.status(400).json({ error: 'Name and email required' });
     }
 
-    const e = email.toLowerCase().trim();
-    const { token, tokenHash } = genTokenAndHash();
-    const tokenExpiry = Date.now() + 1000 * 60 * 60;
-    const now = Math.floor(Date.now() / 1000);
+    const cleanEmail = email.toLowerCase().trim();
+    const { token, tokenHash } = generateToken();
+    const tokenExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
 
-    const existing = await get('SELECT * FROM users WHERE email = ?', [e]);
+    const existing = await get(
+      'SELECT * FROM users WHERE email = ?',
+      [cleanEmail]
+    );
 
     if (!existing) {
       await run(
-        'INSERT INTO users (name, email, dob, token_hash, token_expiry, verified, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)',
-        [name, e, dob || null, tokenHash, tokenExpiry, now]
+        `INSERT INTO users 
+         (name, email, dob, token_hash, token_expiry, verified) 
+         VALUES (?, ?, ?, ?, ?, 0)`,
+        [name, cleanEmail, dob || null, tokenHash, tokenExpiry]
       );
     } else {
       await run(
-        'UPDATE users SET name = ?, dob = ?, token_hash = ?, token_expiry = ?, verified = 0 WHERE email = ?',
-        [name, dob || existing.dob, tokenHash, tokenExpiry, e]
+        `UPDATE users 
+         SET name=?, dob=?, token_hash=?, token_expiry=?, verified=0 
+         WHERE email=?`,
+        [name, dob || existing.dob, tokenHash, tokenExpiry, cleanEmail]
       );
     }
 
     const transporter = await transporterPromise;
-    const verifyUrl = `${BASE_URL}/verify?token=${token}&email=${encodeURIComponent(e)}`;
+    const verifyUrl = `${BASE_URL}/verify?token=${token}&email=${encodeURIComponent(cleanEmail)}`;
 
     const info = await transporter.sendMail({
       from: process.env.EMAIL_FROM || 'no-reply@crajy-boys.local',
-      to: e,
+      to: cleanEmail,
       subject: 'Verify your email — Crajy Boys',
-      text: `Hello ${name},\n\nVerify your email:\n${verifyUrl}\n\nThis link expires in 1 hour.`,
-      html: `<p>Hello ${name},</p><p><a href="${verifyUrl}">Verify your email</a></p><p>Link expires in 1 hour.</p>`
+      html: `
+        <p>Hello <b>${name}</b>,</p>
+        <p>Please verify your email:</p>
+        <p><a href="${verifyUrl}">Verify Email</a></p>
+        <p>This link expires in 1 hour.</p>
+      `
     });
 
-    const preview = nodemailer.getTestMessageUrl(info) || null;
-    res.json({ ok: true, preview });
+    res.json({
+      ok: true,
+      preview: nodemailer.getTestMessageUrl(info) || null
+    });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -126,12 +144,15 @@ app.get('/verify', async (req, res) => {
     const { token, email } = req.query;
     if (!token || !email) return res.status(400).send('Invalid request');
 
-    const e = email.toLowerCase().trim();
-    const user = await get('SELECT * FROM users WHERE email = ?', [e]);
-    if (!user) return res.status(400).send('Invalid token or email');
+    const cleanEmail = email.toLowerCase().trim();
+    const user = await get(
+      'SELECT * FROM users WHERE email = ?',
+      [cleanEmail]
+    );
 
+    if (!user) return res.status(400).send('Invalid link');
     if (Date.now() > Number(user.token_expiry)) {
-      return res.status(400).send('Token expired');
+      return res.status(400).send('Link expired');
     }
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
@@ -140,59 +161,72 @@ app.get('/verify', async (req, res) => {
     }
 
     await run(
-      'UPDATE users SET verified = 1, token_hash = NULL, token_expiry = NULL WHERE email = ?',
-      [e]
+      `UPDATE users 
+       SET verified=1, token_hash=NULL, token_expiry=NULL 
+       WHERE email=?`,
+      [cleanEmail]
     );
 
-    res.send('Email verified successfully. You can now complete registration.');
+    res.send('✅ Email verified. You may now return to the website.');
+
   } catch (err) {
     console.error(err);
     res.status(500).send('Server error');
   }
 });
 
-// Complete registration
+// Complete registration (password)
 app.post('/complete-registration', async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
-      return res.status(400).json({ error: 'email and password required' });
+      return res.status(400).json({ error: 'Email and password required' });
     }
 
-    const e = email.toLowerCase().trim();
-    const user = await get('SELECT * FROM users WHERE email = ?', [e]);
+    const cleanEmail = email.toLowerCase().trim();
+    const user = await get(
+      'SELECT * FROM users WHERE email = ?',
+      [cleanEmail]
+    );
 
-    if (!user) return res.status(400).json({ error: 'No such user' });
+    if (!user) return res.status(400).json({ error: 'User not found' });
     if (!user.verified) return res.status(400).json({ error: 'Email not verified' });
 
     const rounds = Number(process.env.BCRYPT_ROUNDS || 12);
-    const hash = await bcrypt.hash(password, rounds);
+    const passwordHash = await bcrypt.hash(password, rounds);
 
-    await run('UPDATE users SET password_hash = ? WHERE email = ?', [hash, e]);
+    await run(
+      'UPDATE users SET password_hash=? WHERE email=?',
+      [passwordHash, cleanEmail]
+    );
+
     res.json({ ok: true });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Members list
-app.get('/members', async (req, res) => {
+app.get('/members', async (_req, res) => {
   try {
-    const rows = await all(
-      'SELECT name, email, dob, created_at FROM users WHERE verified = 1 ORDER BY created_at DESC'
+    const members = await all(
+      `SELECT name, email, dob, created_at
+       FROM users
+       WHERE verified = 1
+       ORDER BY created_at DESC`
     );
-    res.json({ members: rows });
+    res.json({ members });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // --------------------
-// Start server (ONCE)
+// Start server
 // --------------------
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
-  console.log(`🌍 BASE_URL: ${BASE_URL}`);
 });
