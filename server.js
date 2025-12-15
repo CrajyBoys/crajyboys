@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const crypto = require('crypto');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
 const { init, run, get, all } = require('./db');
